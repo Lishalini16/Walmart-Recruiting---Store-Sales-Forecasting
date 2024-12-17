@@ -1,0 +1,97 @@
+import pandas as pd
+import numpy as np
+from sklearn.model_selection import train_test_split
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.metrics import mean_squared_error, mean_absolute_error
+from sklearn.preprocessing import StandardScaler
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+# Load cleaned datasets
+train_df = pd.read_csv('/mnt/data/train_cleaned.csv')
+test_df = pd.read_csv('/mnt/data/test_cleaned.csv')
+
+# Feature Engineering
+# Define features and target variable
+features = ['Store', 'Dept', 'Temperature', 'Fuel_Price', 'CPI', 'Unemployment', 'Size', 
+            'MarkDown1', 'MarkDown2', 'MarkDown3', 'MarkDown4', 'MarkDown5', 
+            'Super Bowl', 'Labor Day', 'Thanksgiving', 'Christmas']
+
+target = 'Weekly_Sales'
+
+X = train_df[features]
+y = train_df[target]
+
+# Train-Test Split
+X_train, X_valid, y_train, y_valid = train_test_split(X, y, test_size=0.2, random_state=42)
+
+# Data Scaling
+scaler = StandardScaler()
+X_train_scaled = scaler.fit_transform(X_train)
+X_valid_scaled = scaler.transform(X_valid)
+test_scaled = scaler.transform(test_df[features])
+
+# Model Training: Random Forest Regressor
+rf_model = RandomForestRegressor(n_estimators=100, random_state=42, n_jobs=-1)
+rf_model.fit(X_train_scaled, y_train)
+
+# Predictions
+train_preds = rf_model.predict(X_train_scaled)
+valid_preds = rf_model.predict(X_valid_scaled)
+
+# Model Evaluation
+def evaluate_model(y_true, y_pred):
+    rmse = np.sqrt(mean_squared_error(y_true, y_pred))
+    mae = mean_absolute_error(y_true, y_pred)
+    return rmse, mae
+
+train_rmse, train_mae = evaluate_model(y_train, train_preds)
+valid_rmse, valid_mae = evaluate_model(y_valid, valid_preds)
+
+print(f"Train RMSE: {train_rmse:.2f}, Train MAE: {train_mae:.2f}")
+print(f"Validation RMSE: {valid_rmse:.2f}, Validation MAE: {valid_mae:.2f}")
+
+# Save predictions for submission
+test_preds = rf_model.predict(test_scaled)
+submission = test_df[['Store', 'Dept', 'Date']]
+submission['Weekly_Sales'] = test_preds
+submission.to_csv('/mnt/data/submission.csv', index=False)
+print("Submission file saved as submission.csv")
+
+# Data Visualization
+## Distribution of Weekly Sales
+plt.figure(figsize=(10, 6))
+sns.histplot(train_df['Weekly_Sales'], bins=50, kde=True, color='blue')
+plt.title('Distribution of Weekly Sales')
+plt.xlabel('Weekly Sales')
+plt.ylabel('Frequency')
+plt.show()
+
+## Average Sales by Store Type
+plt.figure(figsize=(8, 6))
+avg_sales_by_type = train_df.groupby('Store')['Weekly_Sales'].mean().reset_index()
+sns.barplot(x='Store', y='Weekly_Sales', data=avg_sales_by_type)
+plt.title('Average Weekly Sales by Store')
+plt.xlabel('Store')
+plt.ylabel('Average Weekly Sales')
+plt.show()
+
+## Feature Importance Visualization
+feature_importances = pd.DataFrame({'Feature': features, 'Importance': rf_model.feature_importances_})
+feature_importances = feature_importances.sort_values(by='Importance', ascending=False)
+
+plt.figure(figsize=(12, 8))
+sns.barplot(x='Importance', y='Feature', data=feature_importances)
+plt.title('Feature Importances')
+plt.show()
+
+## Weekly Sales Trend Over Time
+train_df['Date'] = pd.to_datetime(train_df['Date'])
+weekly_sales_trend = train_df.groupby('Date')['Weekly_Sales'].sum().reset_index()
+
+plt.figure(figsize=(12, 6))
+plt.plot(weekly_sales_trend['Date'], weekly_sales_trend['Weekly_Sales'], color='green')
+plt.title('Weekly Sales Trend Over Time')
+plt.xlabel('Date')
+plt.ylabel('Total Weekly Sales')
+plt.show()
