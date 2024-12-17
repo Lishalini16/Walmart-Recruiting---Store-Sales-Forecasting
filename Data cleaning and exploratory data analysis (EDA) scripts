@@ -1,0 +1,69 @@
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+# Load datasets
+stores_df = pd.read_csv('/mnt/data/stores.csv')
+train_df = pd.read_csv('/mnt/data/train.csv')
+test_df = pd.read_csv('/mnt/data/test.csv')
+features_df = pd.read_csv('/mnt/data/features.csv')
+
+# Merge datasets
+train_merged = train_df.merge(features_df, on=['Store', 'Date'], how='left').merge(stores_df, on='Store', how='left')
+test_merged = test_df.merge(features_df, on=['Store', 'Date'], how='left').merge(stores_df, on='Store', how='left')
+
+# Handle Missing Values
+# Impute missing MarkDown values with 0 as they indicate no markdown
+markdown_cols = ['MarkDown1', 'MarkDown2', 'MarkDown3', 'MarkDown4', 'MarkDown5']
+train_merged[markdown_cols] = train_merged[markdown_cols].fillna(0)
+test_merged[markdown_cols] = test_merged[markdown_cols].fillna(0)
+
+# Impute missing CPI and Unemployment with forward fill method
+train_merged['CPI'] = train_merged['CPI'].fillna(method='ffill')
+train_merged['Unemployment'] = train_merged['Unemployment'].fillna(method='ffill')
+test_merged['CPI'] = test_merged['CPI'].fillna(method='ffill')
+test_merged['Unemployment'] = test_merged['Unemployment'].fillna(method='ffill')
+
+# Convert Date column to datetime format
+train_merged['Date'] = pd.to_datetime(train_merged['Date'], format='%d-%m-%y')
+test_merged['Date'] = pd.to_datetime(test_merged['Date'], format='%d-%m-%y')
+
+# Add additional holiday feature for EDA
+holiday_dates = {
+    "Super Bowl": ['2010-02-12', '2011-02-11', '2012-02-10', '2013-02-08'],
+    "Labor Day": ['2010-09-10', '2011-09-09', '2012-09-07', '2013-09-06'],
+    "Thanksgiving": ['2010-11-26', '2011-11-25', '2012-11-23', '2013-11-29'],
+    "Christmas": ['2010-12-31', '2011-12-30', '2012-12-28', '2013-12-27']
+}
+for holiday, dates in holiday_dates.items():
+    train_merged[holiday] = train_merged['Date'].isin(pd.to_datetime(dates))
+    test_merged[holiday] = test_merged['Date'].isin(pd.to_datetime(dates))
+
+# Exploratory Data Analysis (EDA)
+## Sales distribution
+plt.figure(figsize=(10, 6))
+sns.histplot(train_merged['Weekly_Sales'], bins=50, kde=True, color='blue')
+plt.title('Distribution of Weekly Sales')
+plt.xlabel('Weekly Sales')
+plt.ylabel('Frequency')
+plt.show()
+
+## Average sales by store type
+avg_sales_by_type = train_merged.groupby('Type')['Weekly_Sales'].mean().reset_index()
+plt.figure(figsize=(8, 5))
+sns.barplot(x='Type', y='Weekly_Sales', data=avg_sales_by_type, palette='viridis')
+plt.title('Average Weekly Sales by Store Type')
+plt.xlabel('Store Type')
+plt.ylabel('Average Weekly Sales')
+plt.show()
+
+## Correlation heatmap
+correlation_matrix = train_merged[['Weekly_Sales', 'Temperature', 'Fuel_Price', 'CPI', 'Unemployment'] + markdown_cols].corr()
+plt.figure(figsize=(12, 8))
+sns.heatmap(correlation_matrix, annot=True, cmap='coolwarm', fmt='.2f')
+plt.title('Correlation Heatmap')
+plt.show()
+
+# Save cleaned datasets for modeling
+train_merged.to_csv('/mnt/data/train_cleaned.csv', index=False)
+test_merged.to_csv('/mnt/data/test_cleaned.csv', index=False)
